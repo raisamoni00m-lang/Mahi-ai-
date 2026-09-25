@@ -1,0 +1,6 @@
+{
+  "name": "Mahi AI",
+  "description": "Premium modern mobile AI assistant loading screen with glowing blue heart and minimal aesthetics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
