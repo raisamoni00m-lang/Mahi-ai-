@@ -1,6 +1,9 @@
 {
   "name": "Mahi AI",
-  "description": "Premium modern mobile AI assistant loading screen with glowing blue heart and minimal aesthetics.",
-  "requestFramePermissions": [],
+  "description": "Natural female voice AI companion with conversational Bangla and English, barge-in voice interruption, and unlimited access.",
+  "requestFramePermissions": [
+    "android.permission.RECORD_AUDIO",
+    "android.permission.CAMERA"
+  ],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

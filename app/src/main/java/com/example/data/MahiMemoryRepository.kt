@@ -38,16 +38,6 @@ class MahiMemoryRepository(context: Context) {
         private const val KEY_TASKS = "stored_tasks"
         private const val KEY_CONTACTS = "stored_contacts"
         private const val KEY_CHATS = "stored_chat_history"
-        private const val KEY_ENERGY = "user_energy"
-        private const val KEY_LICENSE_ACTIVE = "license_active"
-    }
-
-    fun getEnergy(): Int = prefs.getInt(KEY_ENERGY, 1)
-
-    fun isLicenseActive(): Boolean = prefs.getBoolean(KEY_LICENSE_ACTIVE, false)
-
-    fun activateLicense() {
-        prefs.edit().putBoolean(KEY_LICENSE_ACTIVE, true).putInt(KEY_ENERGY, 99).apply()
     }
 
     // ================= MEMORIES =================

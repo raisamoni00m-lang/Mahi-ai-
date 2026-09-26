@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.AttachFile
 import androidx.compose.material.icons.outlined.Book
 import androidx.compose.material.icons.outlined.CameraAlt
@@ -284,54 +285,20 @@ fun MahiHomeScreen(
             }
         }
 
-            // License Activation Dialog
-            if (state.showLicenseDialog) {
-                LicenseDialog(
-                    onDismiss = { viewModel.toggleLicenseDialog(false) },
-                    onActivate = { viewModel.activateLicense() }
-                )
-            }
-
-            // Notification Info Alert
-            if (state.showNotificationAlert) {
-                AlertDialog(
-                    onDismissRequest = { viewModel.toggleNotificationAlert(false) },
-                    title = {
-                        Text(
-                            text = "Mahi AI Notifications",
-                            color = TextPureWhite,
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = "You are all caught up! Mahi AI is monitoring your schedule, weather alerts, and background notifications.",
-                            color = TextSoftGray
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(onClick = { viewModel.toggleNotificationAlert(false) }) {
-                            Text("OK", color = ElectricBlue)
-                        }
-                    },
-                    containerColor = Color(0xFF0F1726)
-                )
-            }
-
             // Voice settings dialog
             if (state.showVoiceSettingsDialog) {
                 AlertDialog(
                     onDismissRequest = { viewModel.toggleVoiceSettings(false) },
                     title = {
                         Text(
-                            text = "Voice Settings",
+                            text = "Mahi AI Voice",
                             color = TextPureWhite,
                             fontWeight = FontWeight.Bold
                         )
                     },
                     text = {
                         Text(
-                            text = "Natural female assistant voice is active. Rate: 0.98x, Pitch: 1.15x. Mahi AI speaks automatically after generating responses.",
+                            text = "Natural female persona: Mahi (Aoede).\nContinuous conversation with natural Bangla, English and code-switching.\nReal voice barge-in and instant interruption enabled.",
                             color = TextSoftGray
                         )
                     },
@@ -442,16 +409,15 @@ fun HomeMainContent(
     ) {
         Spacer(modifier = Modifier.height(4.dp))
 
-        // ================= LICENSE CARD =================
-        LicenseCard(
-            statusText = state.licenseStatusText,
-            isActivated = state.isLicenseActive,
-            onActivateClick = { viewModel.toggleLicenseDialog(true) }
+        // ================= FREE MODE ACCESS CARD =================
+        FreeModeAccessCard(
+            mode = state.accessMode,
+            status = state.accessStatusText
         )
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // ================= GREETING & ENERGY CARD =================
+        // ================= GREETING & STATUS =================
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Top
@@ -480,34 +446,35 @@ fun HomeMainContent(
                 )
             }
 
-            // Energy Card
+            // Unlimited Status Badge
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(14.dp))
                     .background(Color(0xFF10192A))
                     .border(BorderStroke(1.dp, Color(0xFF1E2D44)), RoundedCornerShape(14.dp))
                     .padding(horizontal = 14.dp, vertical = 8.dp)
-                    .testTag("energy_card")
+                    .testTag("status_badge")
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "⚡",
-                            fontSize = 12.sp,
-                            color = Color(0xFFFBBF24)
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF34D399))
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = "${state.energyCount}",
+                            text = "Unlimited",
                             color = TextPureWhite,
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                     Text(
-                        text = "Energy",
+                        text = "Continuous",
                         color = Color(0xFF75859E),
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontFamily = FontFamily.SansSerif
                     )
                 }
@@ -522,6 +489,61 @@ fun HomeMainContent(
             onClick = { viewModel.toggleVoiceInteraction() },
             modifier = Modifier.padding(vertical = 4.dp)
         )
+
+        // Barge-in and listening indicators
+        if (state.orbState == com.example.ui.home.components.OrbState.SPEAKING) {
+            Spacer(modifier = Modifier.height(6.dp))
+            OutlinedButton(
+                onClick = { viewModel.interruptSpeaking() },
+                modifier = Modifier
+                    .height(36.dp)
+                    .testTag("interrupt_button"),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color(0xFF1C1322)
+                ),
+                border = BorderStroke(1.dp, Color(0xFFEF4444).copy(alpha = 0.6f)),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Stop,
+                    contentDescription = "Stop speaking",
+                    tint = Color(0xFFF87171),
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "থামো / Stop",
+                    color = Color(0xFFFCA5A5),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        } else if (state.orbState == com.example.ui.home.components.OrbState.LISTENING) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF0F1E36))
+                    .border(BorderStroke(1.dp, Color(0xFF1E3A66)), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+                    .testTag("listening_indicator")
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(ElectricBlue)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Mahi শুনছে... Speak in Bangla or English",
+                    color = Color(0xFF93C5FD),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
 
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -595,10 +617,9 @@ fun HomeMainContent(
 }
 
 @Composable
-fun LicenseCard(
-    statusText: String,
-    isActivated: Boolean,
-    onActivateClick: () -> Unit
+fun FreeModeAccessCard(
+    mode: String,
+    status: String
 ) {
     Row(
         modifier = Modifier
@@ -607,22 +628,22 @@ fun LicenseCard(
             .background(Color(0xFF101A2E))
             .border(BorderStroke(1.dp, Color(0xFF1E2E4A)), RoundedCornerShape(14.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp)
-            .testTag("license_card"),
+            .testTag("free_mode_access_card"),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Lock Icon Container
+        // Glowing status indicator icon
         Box(
             modifier = Modifier
-                .size(32.dp)
+                .size(34.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF182845)),
+                .background(Color(0xFF162540)),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Outlined.Lock,
-                contentDescription = null,
-                tint = ElectricBlue,
-                modifier = Modifier.size(16.dp)
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = "Unlimited Access Active",
+                tint = Color(0xFF34D399),
+                modifier = Modifier.size(18.dp)
             )
         }
 
@@ -630,43 +651,34 @@ fun LicenseCard(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = statusText,
+                text = mode,
                 color = TextPureWhite,
-                fontSize = 13.5.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.SansSerif
+                fontFamily = FontFamily.SansSerif,
+                letterSpacing = 0.5.sp
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = if (isActivated) "All premium companion tools unlocked" else "Activate a license for tools, PC link and unlimited talk",
-                color = Color(0xFF8697AF),
-                fontSize = 11.5.sp,
-                fontFamily = FontFamily.SansSerif,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = status,
+                color = Color(0xFF93C5FD),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.SansSerif
             )
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
-
-        if (!isActivated) {
+        // Live Active Tag
+        Box(
+            modifier = Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF064E3B))
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
             Text(
-                text = "Activate",
-                color = ElectricBlue,
-                fontSize = 13.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.SansSerif,
-                modifier = Modifier
-                    .clickable { onActivateClick() }
-                    .padding(vertical = 4.dp, horizontal = 6.dp)
-                    .testTag("activate_license_button")
-            )
-        } else {
-            Icon(
-                imageVector = Icons.Outlined.CheckCircle,
-                contentDescription = null,
-                tint = Color(0xFF4ADE80),
-                modifier = Modifier.size(18.dp)
+                text = "ACTIVE",
+                color = Color(0xFF6EE7B7),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
             )
         }
     }
@@ -1180,50 +1192,3 @@ fun ChatTabContent(
     }
 }
 
-@Composable
-fun LicenseDialog(
-    onDismiss: () -> Unit,
-    onActivate: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "Activate Mahi AI Pro License",
-                color = TextPureWhite,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column {
-                Text(
-                    text = "Unlock unlimited speech conversations, priority Gemini processing, and advanced mobile tools.",
-                    color = TextSoftGray,
-                    fontSize = 13.5.sp,
-                    lineHeight = 19.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
-                Text(
-                    text = "⚡ Unlimited Energy\n✓ Instant Voice Mode\n✓ Priority Multi-Turn Memory",
-                    color = Color(0xFF93C5FD),
-                    fontSize = 13.sp,
-                    lineHeight = 20.sp
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onActivate,
-                colors = ButtonDefaults.buttonColors(containerColor = ElectricBlue)
-            ) {
-                Text("Activate Now")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSoftGray)
-            }
-        },
-        containerColor = Color(0xFF0F1726)
-    )
-}

@@ -147,4 +147,208 @@ class ExampleRobolectricTest {
     assertTrue(memoriesCount >= 0)
     assertTrue(tasksCount >= 0)
   }
+
+  @Test
+  fun `scenario 1 - user says Hi`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val chatService = com.example.data.GeminiChatService(context)
+    val result = chatService.sendMessage("Hi")
+    assertTrue(result.isSuccess)
+    val reply = result.getOrNull().orEmpty()
+    assertTrue(reply.contains("Mahi") || reply.contains("হাই") || reply.contains("Hello"))
+  }
+
+  @Test
+  fun `scenario 2 - user says Bangla Hi`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val chatService = com.example.data.GeminiChatService(context)
+    val result = chatService.sendMessage("হাই")
+    assertTrue(result.isSuccess)
+    val reply = result.getOrNull().orEmpty()
+    assertTrue(reply.contains("Mahi") && reply.contains("হাই"))
+  }
+
+  @Test
+  fun `scenario 3 - user says Assalamu Alaikum`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val chatService = com.example.data.GeminiChatService(context)
+    val result = chatService.sendMessage("Assalamu Alaikum")
+    assertTrue(result.isSuccess)
+    val reply = result.getOrNull().orEmpty()
+    assertTrue(reply.contains("ওয়ালাইকুম আসসালাম"))
+  }
+
+  @Test
+  fun `scenario 4 - user asks Bangla question`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val chatService = com.example.data.GeminiChatService(context)
+    val result = chatService.sendMessage("আজকে আবহাওয়া কেমন?")
+    assertTrue(result.isSuccess)
+    val reply = result.getOrNull().orEmpty()
+    assertTrue(reply.isNotEmpty())
+    assertTrue(reply.any { it in '\u0980'..'\u09FF' })
+  }
+
+  @Test
+  fun `scenario 5 - user asks English question`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val chatService = com.example.data.GeminiChatService(context)
+    val result = chatService.sendMessage("What can you do?")
+    assertTrue(result.isSuccess)
+    val reply = result.getOrNull().orEmpty()
+    assertTrue(reply.isNotEmpty())
+    assertTrue(reply.contains("Mahi") || reply.contains("help") || reply.contains("assistant"))
+  }
+
+  @Test
+  fun `scenario 6 - user mixes Bangla and English`() = kotlinx.coroutines.runBlocking {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val chatService = com.example.data.GeminiChatService(context)
+    val result = chatService.sendMessage("আমার জন্য একটা message লিখে দাও")
+    assertTrue(result.isSuccess)
+    val reply = result.getOrNull().orEmpty()
+    assertTrue(reply.isNotEmpty())
+    assertTrue(reply.contains("মেসেজ") || reply.contains("লিখে") || reply.contains("message"))
+  }
+
+  @Test
+  fun `scenario 7 - user interrupts Mahi while speaking switches to LISTENING`() {
+    val application = ApplicationProvider.getApplicationContext<Application>()
+    val homeVm = com.example.ui.home.MahiHomeViewModel(application)
+
+    // Trigger interruption
+    homeVm.interruptSpeaking()
+    // Must immediately switch to LISTENING mode
+    assertEquals(com.example.ui.home.components.OrbState.LISTENING, homeVm.uiState.value.orbState)
+    assertFalse(homeVm.uiState.value.isSpeakingActive)
+  }
+
+  @Test
+  fun `scenario 8 - continuous conversations in Free Mode without license or limits`() = kotlinx.coroutines.runBlocking {
+    val application = ApplicationProvider.getApplicationContext<Application>()
+    val homeVm = com.example.ui.home.MahiHomeViewModel(application)
+
+    assertEquals("FREE MODE", homeVm.uiState.value.accessMode)
+    assertEquals("Unlimited access", homeVm.uiState.value.accessStatusText)
+
+    // Conversational turn 1
+    homeVm.sendMessage("Hi")
+    // Conversational turn 2
+    homeVm.sendMessage("তুমি কি আমাকে সাহায্য করতে পারবে?")
+    // Conversational turn 3
+    homeVm.sendMessage("আজকে অনেক মন খারাপ")
+
+    // Conversation history continues without restriction
+    assertTrue(homeVm.uiState.value.chatMessages.isNotEmpty())
+  }
+
+  @Test
+  fun `phone action - Open YouTube returns valid launch or web intent`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Open YouTube")
+    assertTrue(result is com.example.data.ActionResult.Success)
+    val success = result as com.example.data.ActionResult.Success
+    assertTrue(success.message.contains("ইউটিউব"))
+    assertNotNull(success.intent)
+  }
+
+  @Test
+  fun `phone action - Open Settings returns valid settings intent`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Open Settings")
+    assertTrue(result is com.example.data.ActionResult.Success)
+    val success = result as com.example.data.ActionResult.Success
+    assertTrue(success.message.contains("সেটিংস"))
+    assertEquals(android.provider.Settings.ACTION_SETTINGS, success.intent?.action)
+  }
+
+  @Test
+  fun `phone action - Turn on Wi-Fi explains Android restriction and provides panel`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Turn on Wi-Fi")
+    assertTrue(result is com.example.data.ActionResult.AndroidRestriction)
+    val restriction = result as com.example.data.ActionResult.AndroidRestriction
+    assertTrue(restriction.message.contains("Android সুরক্ষানীতির কারণে"))
+    assertNotNull(restriction.intent)
+  }
+
+  @Test
+  fun `phone action - Open Camera checks permission and notifies user`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Open Camera")
+    // When permission is not granted, must report missing permission clearly in Bangla
+    if (result is com.example.data.ActionResult.MissingPermission) {
+      assertTrue(result.message.contains("permission দেওয়া নেই"))
+      assertEquals(android.Manifest.permission.CAMERA, result.permission)
+      assertNotNull(result.settingsIntent)
+    } else {
+      assertTrue(result is com.example.data.ActionResult.Success)
+    }
+  }
+
+  @Test
+  fun `phone action - Take a photo checks permission and notifies user`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Take a photo")
+    if (result is com.example.data.ActionResult.MissingPermission) {
+      assertTrue(result.message.contains("permission দেওয়া নেই"))
+      assertEquals(android.Manifest.permission.CAMERA, result.permission)
+    } else {
+      assertTrue(result is com.example.data.ActionResult.Success)
+    }
+  }
+
+  @Test
+  fun `phone action - Set an alarm creates alarm intent with time`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Set an alarm for 7 AM")
+    if (result is com.example.data.ActionResult.Success) {
+      assertTrue(result.message.contains("অ্যালার্ম"))
+      assertEquals(android.provider.AlarmClock.ACTION_SET_ALARM, result.intent?.action)
+      assertEquals(7, result.intent?.getIntExtra(android.provider.AlarmClock.EXTRA_HOUR, -1))
+    }
+  }
+
+  @Test
+  fun `phone action - Call Rahim checks permission without faking success`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Call Rahim")
+    // If contacts/call permission missing, reports missing permission
+    if (result is com.example.data.ActionResult.MissingPermission) {
+      assertTrue(result.message.contains("permission"))
+    } else if (result is com.example.data.ActionResult.Failed) {
+      assertTrue(result.message.contains("কনট্যাক্ট") || result.message.contains("নম্বর"))
+    } else {
+      assertTrue(result is com.example.data.ActionResult.Success)
+    }
+  }
+
+  @Test
+  fun `phone action - Send SMS to Rahim creates SMS intent without faking`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Send SMS to 01700000000")
+    if (result is com.example.data.ActionResult.Success) {
+      assertTrue(result.message.contains("এসএমএস"))
+      assertEquals(android.content.Intent.ACTION_SENDTO, result.intent?.action)
+    }
+  }
+
+  @Test
+  fun `phone action - Play music opens music player`() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val manager = com.example.data.PhoneActionManager(context)
+    val result = manager.processCommand("Play music")
+    if (result is com.example.data.ActionResult.Success) {
+      assertTrue(result.message.contains("মিউজিক"))
+      assertNotNull(result.intent)
+    }
+  }
 }

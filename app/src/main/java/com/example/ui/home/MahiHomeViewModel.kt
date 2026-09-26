@@ -2,12 +2,15 @@ package com.example.ui.home
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.data.ActionResult
 import com.example.data.ChatMessage
 import com.example.data.GeminiChatService
 import com.example.data.MahiMemoryRepository
 import com.example.data.MemoryItem
+import com.example.data.PhoneActionManager
 import com.example.data.SpeechHelper
 import com.example.data.WeatherInfo
 import com.example.data.WeatherService
@@ -38,22 +41,21 @@ data class HomeUiState(
     val todayDateNumber: String = "25",
     val todayDayAndMonth: String = "Fri, Sep",
     val weather: WeatherInfo = WeatherInfo("24°C", "Sunny", "☀️"),
-    val energyCount: Int = 1,
-    val isLicenseActive: Boolean = false,
-    val licenseStatusText: String = "Free mode • 10:00 min left today",
+    val activeMood: String = "Cheerful",
+    val moodSubtitle: String = "Always here for you",
+    val accessMode: String = "FREE MODE",
+    val accessStatusText: String = "Unlimited access",
     val inputText: String = "",
     val liveTranscription: String? = null,
-    val lastAiResponse: String = "How can I help you today?",
+    val lastAiResponse: String = "হাই! 😊 আমি Mahi। তোমার সাথে কথা বলতে ভালো লাগছে। বলো, কীভাবে তোমাকে সাহায্য করতে পারি?",
     val chatMessages: List<ChatMessage> = emptyList(),
     val memories: List<MemoryItem> = emptyList(),
     val scannedBitmap: Bitmap? = null,
     val scanResultText: String? = null,
     val isScanning: Boolean = false,
-    val showLicenseDialog: Boolean = false,
     val showVoiceSettingsDialog: Boolean = false,
     val showNotificationAlert: Boolean = false,
-    val activeMood: String = "Warm",
-    val moodSubtitle: String = "All good"
+    val isSpeakingActive: Boolean = false
 )
 
 class MahiHomeViewModel(application: Application) : AndroidViewModel(application) {
@@ -61,6 +63,7 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
     private val chatService = GeminiChatService(application)
     private val weatherService = WeatherService()
     private val memoryRepo = MahiMemoryRepository(application)
+    private val phoneActionManager = PhoneActionManager(application)
 
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
@@ -89,6 +92,7 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
             onSpeakingStateChanged = { isSpeaking ->
                 _uiState.update {
                     it.copy(
+                        isSpeakingActive = isSpeaking,
                         orbState = if (isSpeaking) OrbState.SPEAKING else if (it.orbState == OrbState.SPEAKING) OrbState.IDLE else it.orbState
                     )
                 }
@@ -114,8 +118,6 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
         val dayAndMonth = SimpleDateFormat("EEE, MMM", Locale.getDefault()).format(date)
 
         val memories = memoryRepo.getMemories()
-        val energy = memoryRepo.getEnergy()
-        val isLicenseActive = memoryRepo.isLicenseActive()
 
         _uiState.update {
             it.copy(
@@ -123,13 +125,12 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
                 todayDateNumber = dayNumber,
                 todayDayAndMonth = dayAndMonth,
                 memories = memories,
-                energyCount = energy,
-                isLicenseActive = isLicenseActive,
-                licenseStatusText = if (isLicenseActive) "Unlimited License Active" else "Free mode • 10:00 min left today",
+                accessMode = "FREE MODE",
+                accessStatusText = "Unlimited access",
                 chatMessages = listOf(
                     ChatMessage(
                         isUser = false,
-                        text = "Hello! I'm Mahi AI, your personal companion. You can ask me anything or tap the mic to speak."
+                        text = "হাই! 😊 আমি Mahi। তোমার সাথে কথা বলতে ভালো লাগছে। বলো, কীভাবে তোমাকে সাহায্য করতে পারি?"
                     )
                 )
             )
@@ -150,20 +151,53 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(inputText = text) }
     }
 
+    /**
+     * Toggles voice interaction with real voice barge-in support.
+     * If Mahi is currently speaking, stops audio immediately and starts listening.
+     */
     fun toggleVoiceInteraction() {
         val currentState = _uiState.value.orbState
-        if (currentState == OrbState.LISTENING) {
-            speechHelper?.stopListening()
-        } else if (currentState == OrbState.SPEAKING) {
+        if (currentState == OrbState.SPEAKING) {
+            // Immediate barge-in / interrupt: stop playback and start listening
             speechHelper?.stopSpeaking()
+            speechHelper?.startListening()
+            _uiState.update { it.copy(orbState = OrbState.LISTENING, isSpeakingActive = false) }
+        } else if (currentState == OrbState.LISTENING) {
+            speechHelper?.stopListening()
+            _uiState.update { it.copy(orbState = OrbState.IDLE) }
         } else {
             speechHelper?.startListening()
+            _uiState.update { it.copy(orbState = OrbState.LISTENING) }
         }
     }
 
+    /**
+     * Interrupts current speech immediately, stops audio, and switches directly to LISTENING.
+     */
+    fun interruptSpeaking() {
+        speechHelper?.stopSpeaking()
+        speechHelper?.startListening()
+        _uiState.update { it.copy(orbState = OrbState.LISTENING, isSpeakingActive = false) }
+    }
+
+    /**
+     * Sends user message to Mahi AI.
+     * Flow: IDLE -> LISTENING -> PROCESSING -> SPEAKING -> IDLE
+     * Produces natural female audio via Gemini native audio/TTS.
+     */
     fun sendMessage(text: String = _uiState.value.inputText) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
+
+        // Stop any ongoing playback before processing new turn
+        speechHelper?.stopSpeaking()
+
+        // Check if user requested a phone control action (e.g. Open YouTube, Call, SMS, Wi-Fi, Camera, Alarm, Settings)
+        val actionResult = phoneActionManager.processCommand(trimmed)
+        if (actionResult !is ActionResult.NotACommand) {
+            handleDeviceCommandResult(actionResult, trimmed)
+            return
+        }
 
         val userMessage = ChatMessage(isUser = true, text = trimmed)
         val updatedHistory = _uiState.value.chatMessages + userMessage
@@ -188,10 +222,12 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
                         orbState = OrbState.SPEAKING
                     )
                 }
-                // Speak response with natural feminine voice
-                speechHelper?.speak(aiReply)
+
+                // Generate natural female speech using Gemini Native Audio / TTS
+                speakNaturalMahiVoice(aiReply)
+
             }.onFailure { error ->
-                val fallbackReply = "I encountered an issue: ${error.localizedMessage ?: "Network error"}. Please check your connection or Gemini key in Setup."
+                val fallbackReply = "বলো, আমি শুনছি। Connection সমস্যা হয়েছে, কিন্তু আমি সাথে আছি। (${error.localizedMessage ?: "Network"})"
                 val assistantMessage = ChatMessage(isUser = false, text = fallbackReply)
                 _uiState.update {
                     it.copy(
@@ -200,7 +236,78 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
                         orbState = OrbState.IDLE
                     )
                 }
-                speechHelper?.speak(fallbackReply)
+            }
+        }
+    }
+
+    private fun handleDeviceCommandResult(actionResult: ActionResult, userPrompt: String) {
+        val userMessage = ChatMessage(isUser = true, text = userPrompt)
+        val replyText = when (actionResult) {
+            is ActionResult.Success -> {
+                actionResult.intent?.let { intent ->
+                    try {
+                        getApplication<Application>().startActivity(intent)
+                    } catch (e: Exception) {
+                        Log.w("MahiHomeViewModel", "Failed to launch intent: ${e.message}")
+                    }
+                }
+                actionResult.message
+            }
+            is ActionResult.MissingPermission -> {
+                actionResult.settingsIntent?.let { intent ->
+                    try {
+                        getApplication<Application>().startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+                actionResult.message
+            }
+            is ActionResult.AndroidRestriction -> {
+                actionResult.intent?.let { intent ->
+                    try {
+                        getApplication<Application>().startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+                actionResult.message
+            }
+            is ActionResult.AppNotFound -> actionResult.message
+            is ActionResult.Failed -> actionResult.message
+            ActionResult.NotACommand -> ""
+        }
+
+        val assistantMessage = ChatMessage(isUser = false, text = replyText)
+        _uiState.update {
+            it.copy(
+                inputText = "",
+                liveTranscription = null,
+                lastAiResponse = replyText,
+                chatMessages = it.chatMessages + userMessage + assistantMessage,
+                orbState = OrbState.SPEAKING
+            )
+        }
+
+        speakNaturalMahiVoice(replyText)
+    }
+
+    private fun speakNaturalMahiVoice(replyText: String) {
+        viewModelScope.launch {
+            val speechResult = chatService.generateSpeech(replyText, voiceName = GeminiChatService.PERSISTENT_FEMALE_VOICE)
+            speechResult.onSuccess { (audioBytes, mimeType) ->
+                speechHelper?.playGeminiAudio(
+                    audioBytes = audioBytes,
+                    mimeType = mimeType,
+                    onDone = {
+                        _uiState.update {
+                            if (it.orbState == OrbState.SPEAKING) it.copy(orbState = OrbState.IDLE) else it
+                        }
+                    }
+                )
+            }.onFailure { e ->
+                Log.w("MahiHomeViewModel", "Gemini TTS fallback invoked: ${e.message}")
+                speechHelper?.speakFallback(replyText) {
+                    _uiState.update {
+                        if (it.orbState == OrbState.SPEAKING) it.copy(orbState = OrbState.IDLE) else it
+                    }
+                }
             }
         }
     }
@@ -208,13 +315,13 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
     fun triggerQuickAction(action: String) {
         when (action) {
             "Music" -> {
-                sendMessage("Recommend a great soothing music playlist or track for relaxing right now.")
+                sendMessage("আমাকে মন ভালো করার মতো সুন্দর কিছু গান বা মিউজিক সাজেস্ট করো।")
             }
             "Study" -> {
-                sendMessage("Let's do a productive study session. Give me a 25-minute Pomodoro focus goal.")
+                sendMessage("চলো একসাথে পড়াশোনা করি। আমাকে ২৫ মিনিটের একটি পোমোডোরো লক্ষ্য দাও।")
             }
             "Journal" -> {
-                sendMessage("Give me a thoughtful daily reflection prompt for my personal journal.")
+                sendMessage("আজকের ডায়েরির জন্য আমাকে একটি সুন্দর প্রশ্ন বা ভাবনা দাও।")
             }
         }
     }
@@ -230,7 +337,7 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
 
         viewModelScope.launch {
             val result = chatService.sendMessage(
-                prompt = "Please analyze this image carefully and provide a helpful, detailed breakdown of what you see.",
+                prompt = "Please analyze this image carefully and provide a helpful, natural breakdown of what you see.",
                 attachedBitmap = bitmap
             )
             result.onSuccess { analysis ->
@@ -240,7 +347,7 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
                         scanResultText = analysis
                     )
                 }
-                speechHelper?.speak("I've analyzed the image. Here is what I found.")
+                speakNaturalMahiVoice("আমি ছবিটি দেখেছি। এটি চমৎকার, নিচে বিস্তারিত তথ্য লিখে দিয়েছি।")
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(
@@ -260,22 +367,6 @@ class MahiHomeViewModel(application: Application) : AndroidViewModel(application
     fun deleteMemory(id: String) {
         memoryRepo.deleteMemory(id)
         _uiState.update { it.copy(memories = memoryRepo.getMemories()) }
-    }
-
-    fun activateLicense() {
-        memoryRepo.activateLicense()
-        _uiState.update {
-            it.copy(
-                isLicenseActive = true,
-                energyCount = 99,
-                licenseStatusText = "Unlimited License Active",
-                showLicenseDialog = false
-            )
-        }
-    }
-
-    fun toggleLicenseDialog(show: Boolean) {
-        _uiState.update { it.copy(showLicenseDialog = show) }
     }
 
     fun toggleVoiceSettings(show: Boolean) {

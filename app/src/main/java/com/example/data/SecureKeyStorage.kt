@@ -101,30 +101,43 @@ class SecureKeyStorage(context: Context) {
     }
 
     fun getApiKey(): String? {
-        val encryptedStr = prefs.getString(KEY_ENCRYPTED_API_KEY, null) ?: return null
-        val ivStr = prefs.getString(KEY_IV, null)
+        val encryptedStr = prefs.getString(KEY_ENCRYPTED_API_KEY, null)
+        if (encryptedStr != null) {
+            val ivStr = prefs.getString(KEY_IV, null)
+            val secretKey = getSecretKey()
+            if (secretKey != null && ivStr != null) {
+                try {
+                    val iv = Base64.decode(ivStr, Base64.NO_WRAP)
+                    val encryptedBytes = Base64.decode(encryptedStr, Base64.NO_WRAP)
+                    val cipher = Cipher.getInstance(AES_MODE)
+                    val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
+                    cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
+                    val decrypted = cipher.doFinal(encryptedBytes)
+                    val key = String(decrypted, StandardCharsets.UTF_8).trim()
+                    if (key.isNotEmpty()) return key
+                } catch (_: Exception) {
+                    // fall through
+                }
+            }
 
-        val secretKey = getSecretKey()
-        if (secretKey != null && ivStr != null) {
             try {
-                val iv = Base64.decode(ivStr, Base64.NO_WRAP)
-                val encryptedBytes = Base64.decode(encryptedStr, Base64.NO_WRAP)
-                val cipher = Cipher.getInstance(AES_MODE)
-                val spec = GCMParameterSpec(GCM_TAG_LENGTH, iv)
-                cipher.init(Cipher.DECRYPT_MODE, secretKey, spec)
-                val decrypted = cipher.doFinal(encryptedBytes)
-                return String(decrypted, StandardCharsets.UTF_8)
+                val decoded = Base64.decode(encryptedStr, Base64.NO_WRAP)
+                val key = String(decoded, StandardCharsets.UTF_8).trim()
+                if (key.isNotEmpty()) return key
             } catch (_: Exception) {
                 // fall through
             }
         }
 
-        return try {
-            val decoded = Base64.decode(encryptedStr, Base64.NO_WRAP)
-            String(decoded, StandardCharsets.UTF_8)
-        } catch (_: Exception) {
-            null
+        // Check injected BuildConfig.GEMINI_API_KEY (from Secrets panel / .env)
+        val buildKey = try {
+            com.example.BuildConfig.GEMINI_API_KEY
+        } catch (_: Exception) { null }
+        if (!buildKey.isNullOrBlank() && buildKey != "MY_GEMINI_API_KEY") {
+            return buildKey.trim()
         }
+
+        return null
     }
 
     fun hasSavedKey(): Boolean {

@@ -71,14 +71,14 @@ fun MahiAppNavHost(
     val storage = remember { SecureKeyStorage(context) }
     var currentScreen by remember { mutableStateOf(ScreenState.SPLASH_LOADING) }
 
-    // Brief splash screen on initial startup, then navigate to Home or setup
+    // Brief splash screen on initial startup, then navigate directly to Home in Free Mode
     LaunchedEffect(Unit) {
-        delay(1400)
-        currentScreen = if (storage.isOnboardingCompleted() && storage.hasSavedKey()) {
-            ScreenState.HOME_MAIN
-        } else {
-            ScreenState.SETUP_GEMINI_KEY
-        }
+        delay(1200)
+        currentScreen = ScreenState.HOME_MAIN
+    }
+
+    androidx.activity.compose.BackHandler(enabled = currentScreen != ScreenState.HOME_MAIN && currentScreen != ScreenState.SPLASH_LOADING) {
+        currentScreen = ScreenState.HOME_MAIN
     }
 
     Crossfade(
